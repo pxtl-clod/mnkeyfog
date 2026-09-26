@@ -32,9 +32,10 @@ public static partial class ActionParser {
     }
 
     /// <summary>
-    /// Parse all space-move tokens in a message into game actions. The player's
-    /// view is used to resolve space names (board prefixes etc.); fog is not a
-    /// factor — fogged spaces remain playable, per Kriegspiel rules.
+    /// Parse all space-move tokens in a <c>!play</c> command's arguments into
+    /// game actions. The player's view is used to resolve space names (board
+    /// prefixes etc.); fog is not a factor — fogged spaces remain playable, per
+    /// Kriegspiel rules.
     /// </summary>
     public static IReadOnlyList<GameAction> ParseMoves(GameView playerView, string message) {
         var moves = new List<GameAction>();

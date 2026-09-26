@@ -13,14 +13,17 @@ namespace MnkeyFog.BskyService;
 /// DM protocol (per conversation thread):
 ///   !new [template] [players] — start a game (default: tictactoe, 2 players)
 ///   !join                     — claim a player slot
+///   !play <space> [<space>]   — play a move, e.g. !play 5 or !play 1A 2B
 ///   !board                    — re-render your view of the board
 ///   !help                     — show help
 ///   !quit                     — end the game in this thread
-///   space name (e.g. "5" or "1A") — play that space
 ///
-/// Public threads: @mention the bot with "space=NN" to play a move on the game
-/// keyed to the mention thread's root post; the bot posts the spectator board
-/// (no fog leak) mentioning all active players (up to 10 handles).
+/// Messages that do not start with '!' are ignored — the bot never infers a
+/// command from plain text.
+///
+/// Public threads: @mention the bot with "!play space=NN" to play a move on the
+/// game keyed to the mention thread's root post; the bot posts the spectator
+/// board (no fog leak) mentioning all active players (up to 10 handles).
 /// </summary>
 public sealed class BskyGameService : BskyBotService {
     /// <summary>Bluesky limits a post to mentioning at most 10 users.</summary>
@@ -76,8 +79,8 @@ public sealed class BskyGameService : BskyBotService {
     private Task HandleMessageAsync(string chatKey, string senderDid, string message, MessageChannel channel, CancellationToken cancellationToken)
     => ActionParser.ParseCommand(message).Match(
         command => HandleCommandAsync(chatKey, senderDid, command, channel, cancellationToken),
-        // Not a command — try to parse it as moves in an existing game.
-        _ => TryPlayMovesAsync(chatKey, senderDid, message, channel, cancellationToken));
+        // Not a !command — ignore plain text; never infer intent from it.
+        _ => Task.CompletedTask);
 
     private async Task HandleCommandAsync(string chatKey, string senderDid, CommandToken command, MessageChannel channel, CancellationToken cancellationToken) {
         switch (command.Command) {
@@ -86,6 +89,9 @@ public sealed class BskyGameService : BskyBotService {
                 break;
             case "join":
                 await HandleJoinAsync(chatKey, senderDid, channel, cancellationToken);
+                break;
+            case "play":
+                await HandlePlayAsync(chatKey, senderDid, command.Args, channel, cancellationToken);
                 break;
             case "board":
                 await HandleBoardAsync(chatKey, senderDid, channel, cancellationToken);
@@ -160,9 +166,10 @@ public sealed class BskyGameService : BskyBotService {
         await channel.RespondAsync(await channel.RenderBoardForAsync(session, cancellationToken));
     }
 
-    private async Task TryPlayMovesAsync(string chatKey, string senderDid, string message, MessageChannel channel, CancellationToken cancellationToken) {
+    private async Task HandlePlayAsync(string chatKey, string senderDid, string args, MessageChannel channel, CancellationToken cancellationToken) {
         if (!GameStore.TryGetGame(chatKey, out var session)) {
-            return; // no game; stay quiet to avoid replying to every random DM
+            await channel.RespondAsync("No game in this thread. Start one with !new [game] [players].");
+            return;
         }
 
         var playerIndex = session.GetPlayerIndex(senderDid);
@@ -172,9 +179,9 @@ public sealed class BskyGameService : BskyBotService {
         }
 
         var playerView = session.GetViewFor(senderDid);
-        var moves = ActionParser.ParseMoves(playerView, message);
+        var moves = ActionParser.ParseMoves(playerView, args);
         if (moves.Count == 0) {
-            await channel.RespondAsync("No valid moves found. Send a space name like '5' (or '1A'), or !help.");
+            await channel.RespondAsync("No valid spaces in !play. Usage: !play <space> — e.g. '!play 5' or '!play 1A'.");
             return;
         }
 
@@ -204,7 +211,8 @@ public sealed class BskyGameService : BskyBotService {
         "Commands:\n"
         + "!new [game] [players] — start a game (games: tictactoe, fog-tictactoe, kriegspiel-tictactoe, gomoku...)\n"
         + "!join — claim a player slot\n"
+        + "!play <space> [<space>] — play a move, e.g. '!play 5' or '!play 1A'\n"
         + "!board — show the board\n"
         + "!quit — end the game\n"
-        + "Reply with a space name (e.g. '5' or '1A') to play a move.";
+        + "Plain text (no leading '!') is ignored.";
 }
