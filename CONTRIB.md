@@ -294,6 +294,21 @@ This document captures the coding style patterns used in this project.
     public OneOf<CommandToken, None> ParseCommand(string message) { ... }
     ```
 
+- Prefer the lambda-based `Switch`/`Match` methods for branching between
+  outcomes; avoid `IsT0`/`AsT0`-style accessors, which scattered-type-check the
+  union and lose exhaustiveness. Use them only where necessary (e.g. a quick
+  `IsT1` bail-out in non-branching code).
+
+- For async handlers, have each `Match` lambda return a `Task` and await the
+  `Match` result once — this keeps both outcomes async-safe (never `Switch`
+  with async lambdas, which is fire-and-forget):
+
+    ```csharp
+    await result.Match(
+        success => HandleSuccessAsync(success),
+        _ => HandleFailureAsync());
+    ```
+
 - An alternative pattern for "found or not" cases is to return an
   `IEnumerable` of parsed results (1 or 0 items expected) and have the caller
   simply `foreach` across the results — the empty case then falls out

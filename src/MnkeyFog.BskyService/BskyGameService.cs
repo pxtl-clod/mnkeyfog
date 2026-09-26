@@ -73,18 +73,16 @@ public sealed class BskyGameService : BskyBotService {
             : [];
     }
 
-    private async Task HandleMessageAsync(string chatKey, string senderDid, string message, MessageChannel channel, CancellationToken cancellationToken) {
-        var parsedCommand = ActionParser.ParseCommand(message);
-        if (parsedCommand.IsT1) {
-            // Not a command — try to parse it as moves in an existing game.
-            await TryPlayMovesAsync(chatKey, senderDid, message, channel, cancellationToken);
-            return;
-        }
+    private Task HandleMessageAsync(string chatKey, string senderDid, string message, MessageChannel channel, CancellationToken cancellationToken)
+    => ActionParser.ParseCommand(message).Match(
+        command => HandleCommandAsync(chatKey, senderDid, command, channel, cancellationToken),
+        // Not a command — try to parse it as moves in an existing game.
+        _ => TryPlayMovesAsync(chatKey, senderDid, message, channel, cancellationToken));
 
-        var (command, args) = parsedCommand.AsT0;
-        switch (command) {
+    private async Task HandleCommandAsync(string chatKey, string senderDid, CommandToken command, MessageChannel channel, CancellationToken cancellationToken) {
+        switch (command.Command) {
             case "new":
-                await HandleNewAsync(chatKey, senderDid, args, channel, cancellationToken);
+                await HandleNewAsync(chatKey, senderDid, command.Args, channel, cancellationToken);
                 break;
             case "join":
                 await HandleJoinAsync(chatKey, senderDid, channel, cancellationToken);
@@ -100,7 +98,7 @@ public sealed class BskyGameService : BskyBotService {
                 await channel.RespondAsync("Game ended.");
                 break;
             default:
-                await channel.RespondAsync($"Unknown command '!{command}'. " + HelpText);
+                await channel.RespondAsync($"Unknown command '!{command.Command}'. " + HelpText);
                 break;
         }
     }

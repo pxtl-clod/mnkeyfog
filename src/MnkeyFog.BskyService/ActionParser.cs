@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 using MnkeyFog.Model.Template;
 
@@ -51,7 +52,7 @@ public static partial class ActionParser {
             }
 
             var token = SpaceAssignmentPrefixRegex().Replace(rawToken, "");
-            if (TryCreateMove(factory, playerView, token) is { } move) {
+            if (TryCreateMove(factory, playerView, token, out var move)) {
                 moves.Add(move);
             }
         }
@@ -60,19 +61,27 @@ public static partial class ActionParser {
     }
 
     /// <summary>
-    /// Resolve a space name to a move action, or null if the token is not a valid
-    /// space name. Whether the move is allowed is decided by the model at
-    /// attempt time (e.g. Known-occupied spaces return PositionAlreadyPlayed).
+    /// Resolve a space name to a move action. Returns false if the token is not
+    /// a valid space name. Whether the move is allowed is decided by the model
+    /// at attempt time (e.g. Known-occupied spaces return PositionAlreadyPlayed).
     /// The model's lookup throws on invalid board-name prefixes (multi-board
     /// games), so this is guarded.
     /// </summary>
-    private static GameAction? TryCreateMove(GameActionFactoryForSpace factory, GameView playerView, string token) {
+    private static bool TryCreateMove(
+        GameActionFactoryForSpace factory,
+        GameView playerView,
+        string token,
+        [NotNullWhen(true)] out GameAction? move
+    ) {
+        move = null;
         try {
-            return playerView.TryGetCoordinatesFromSpaceName(token, out sbyte boardIndex, out sbyte col, out sbyte row)
-                ? factory.Create(boardIndex, col, row)
-                : null;
+            if (!playerView.TryGetCoordinatesFromSpaceName(token, out sbyte boardIndex, out sbyte col, out sbyte row)) {
+                return false;
+            }
+            move = factory.Create(boardIndex, col, row);
+            return true;
         } catch (ArgumentException) {
-            return null;
+            return false;
         }
     }
 }
