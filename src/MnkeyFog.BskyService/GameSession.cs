@@ -1,3 +1,5 @@
+using MnkeyFog.Model;
+using MnkeyFog.Model.MNKGame;
 using MnkeyFog.Model.Template;
 
 namespace MnkeyFog.BskyService;
@@ -88,6 +90,14 @@ public sealed class GameSession {
         return GameState.GetSpectatorView();
     }
     #endregion
+
+    /// <summary>
+    /// True if the game hides information from players (Kriegspiel fog) or
+    /// plays synchronously, so moves should not be made in public threads.
+    /// </summary>
+    public bool IsSecret
+        => GameState.GameTemplate.PlayManager is SynchronizedPlayManager
+            || GameState.GameTemplate is MNKTemplate { IsKriegspiel: true };
 
     #region commands
     /// <summary>Attempt a move for the given player. Returns the play result.</summary>

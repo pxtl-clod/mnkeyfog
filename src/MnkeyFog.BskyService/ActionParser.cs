@@ -7,37 +7,59 @@ namespace MnkeyFog.BskyService;
 /// <summary>
 /// Parses bot-directed text messages into commands and game actions.
 ///
-/// Messages are whitespace-tokenized. Tokens starting with '!' are commands.
-/// Any other token that names a valid space (e.g. "5", "1A", "2B") is a move.
+/// Commands are the first whitespace token of a message, prefixed with '!' in
+/// public chats (where the prefix is required). In DMs the prefix is optional.
+/// Remaining tokens are the command's arguments; tokens naming a valid space
+/// (e.g. "5", "1A", "2B") are moves.
 /// </summary>
 public static partial class ActionParser {
+    /// <summary>Command names the bot recognizes (without the '!' prefix).</summary>
+    public static readonly IReadOnlyList<string> KnownCommands = ["new", "join", "play", "board", "help", "quit"];
+
     [GeneratedRegex(@"^space\s*[=:]\s*", RegexOptions.IgnoreCase)]
     private static partial Regex SpaceAssignmentPrefixRegex();
 
     /// <summary>
     /// Parse a command token. Returns a <see cref="CommandToken"/> with the
-    /// lowercased command name (without the '!') and the remainder of the
-    /// message, or <see cref="None"/> if the message is not a command.
+    /// lowercased command name (without the '!') and the whitespace-split
+    /// argument tokens, or <see cref="None"/> if the message is not a command.
+    /// In public chats the message must start with '!'. When
+    /// <paramref name="isPrefixOptional"/> is true (DMs), the '!' prefix is
+    /// optional: a message whose first token names a known command counts as a
+    /// command even without the prefix.
     /// </summary>
-    public static OneOf<CommandToken, None> ParseCommand(string message) {
+    public static OneOf<CommandToken, None> ParseCommand(string message, bool isPrefixOptional = false) {
         var trimmed = message.Trim();
-        if (!trimmed.StartsWith('!')) {
+        var hasPrefix = trimmed.StartsWith('!');
+        if (hasPrefix) {
+            trimmed = trimmed[1..];
+        } else if (!isPrefixOptional) {
             return new None();
         }
 
         var spaceIndex = trimmed.IndexOf(' ');
-        var command = (spaceIndex < 0 ? trimmed : trimmed[..spaceIndex])[1..].ToLowerInvariant();
-        var args = spaceIndex < 0 ? "" : trimmed[(spaceIndex + 1)..].Trim();
-        return new CommandToken(command, args);
+        var command = (spaceIndex < 0 ? trimmed : trimmed[..spaceIndex]).ToLowerInvariant();
+        if (!hasPrefix && !KnownCommands.Contains(command)) {
+            return new None();
+        }
+
+        var arg = spaceIndex < 0
+            ? (IReadOnlyList<string>)[]
+            : [.. trimmed[(spaceIndex + 1)..].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)];
+        return new CommandToken(command, arg);
     }
 
+    /// <summary>Whitespace-tokenize a message into argument/move tokens.</summary>
+    public static IReadOnlyList<string> Tokenize(string text)
+        => [.. text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)];
+
     /// <summary>
-    /// Parse all space-move tokens in a <c>!play</c> command's arguments into
-    /// game actions. The player's view is used to resolve space names (board
-    /// prefixes etc.); fog is not a factor — fogged spaces remain playable, per
-    /// Kriegspiel rules.
+    /// Parse move tokens (as accepted by the <c>!play</c> command, e.g. "5",
+    /// "1A 2B", "space=NN") into game actions. The player's view is used to
+    /// resolve space names (board prefixes etc.); fog is not a factor — fogged
+    /// spaces remain playable, per Kriegspiel rules.
     /// </summary>
-    public static IReadOnlyList<GameAction> ParseMoves(GameView playerView, string message) {
+    public static IReadOnlyList<GameAction> ParsePlay(GameView playerView, IReadOnlyList<string> tokens) {
         var moves = new List<GameAction>();
         GameActionFactoryForSpace? factory = playerView.AvailableActions
             .OfType<GameActionFactoryForSpace>()
@@ -47,11 +69,7 @@ public static partial class ActionParser {
             return moves;
         }
 
-        foreach (var rawToken in message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) {
-            if (rawToken.StartsWith('!')) {
-                continue; // command tokens are not moves
-            }
-
+        foreach (var rawToken in tokens) {
             var token = SpaceAssignmentPrefixRegex().Replace(rawToken, "");
             if (TryCreateMove(factory, playerView, token, out var move)) {
                 moves.Add(move);
@@ -87,5 +105,8 @@ public static partial class ActionParser {
     }
 }
 
-/// <summary>A parsed bot command: the lowercased command name and its argument string.</summary>
-public sealed record CommandToken(string Command, string Args);
+/// <summary>
+/// A parsed bot command: the lowercased command name (without the '!') and the
+/// whitespace-split argument tokens following it.
+/// </summary>
+public sealed record CommandToken(string Command, IReadOnlyList<string> Arg);
