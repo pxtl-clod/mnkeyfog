@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/MnkeyFog.CommandLine/MnkeyFog.CommandLine.csproj" />
     <Project Path="src/MnkeyFog.Model/MnkeyFog.Model.csproj" />
+    <Project Path="src/MnkeyFog.BskyService/MnkeyFog.BskyService.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MnkeyFog.Model.Tests/MnkeyFog.Model.Tests.csproj" />
