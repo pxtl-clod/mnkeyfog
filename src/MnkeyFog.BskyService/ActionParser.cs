@@ -6,7 +6,7 @@ namespace MnkeyFog.BskyService;
 /// <summary>
 /// Parses bot-directed text messages into commands and game actions.
 ///
-/// Messages are whitespace-tokenized. Tokens starting with '/' are commands.
+/// Messages are whitespace-tokenized. Tokens starting with '!' are commands.
 /// Any other token that names a valid space (e.g. "5", "1A", "2B") is a move.
 /// </summary>
 public static partial class ActionParser {
@@ -14,12 +14,12 @@ public static partial class ActionParser {
     private static partial Regex SpaceAssignmentPrefixRegex();
 
     /// <summary>
-    /// Parse a command token. Returns the lowercased command name (without the '/')
+    /// Parse a command token. Returns the lowercased command name (without the '!')
     /// and the remainder of the message, or null if the message is not a command.
     /// </summary>
     public static (string Command, string Args)? ParseCommand(string message) {
         var trimmed = message.Trim();
-        if (!trimmed.StartsWith('/')) {
+        if (!trimmed.StartsWith('!')) {
             return null;
         }
 
@@ -44,7 +44,7 @@ public static partial class ActionParser {
         }
 
         foreach (var rawToken in message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) {
-            if (rawToken.StartsWith('/')) {
+            if (rawToken.StartsWith('!')) {
                 continue; // command tokens are not moves
             }
 

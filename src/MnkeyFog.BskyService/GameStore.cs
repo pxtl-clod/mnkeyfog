@@ -64,7 +64,7 @@ public sealed class GameStore {
         }
 
         if (!_games.TryAdd(chatId, created)) {
-            return new CommandError($"A game is already running in this thread. Use /quit to end it first.");
+            return new CommandError($"A game is already running in this thread. Use !quit to end it first.");
         }
 
         PersistSession(created);

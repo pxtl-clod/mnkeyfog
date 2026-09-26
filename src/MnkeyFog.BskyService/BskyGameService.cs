@@ -11,11 +11,11 @@ namespace MnkeyFog.BskyService;
 /// Concrete bot that hosts mnkeyfog games over Bluesky DMs and @mentions.
 ///
 /// DM protocol (per conversation thread):
-///   /new [template] [players] — start a game (default: tictactoe, 2 players)
-///   /join                     — claim a player slot
-///   /board                    — re-render your view of the board
-///   /help                     — show help
-///   /quit                     — end the game in this thread
+///   !new [template] [players] — start a game (default: tictactoe, 2 players)
+///   !join                     — claim a player slot
+///   !board                    — re-render your view of the board
+///   !help                     — show help
+///   !quit                     — end the game in this thread
 ///   space name (e.g. "5" or "1A") — play that space
 ///
 /// Public threads: @mention the bot with "space=NN" to play a move on the game
@@ -98,7 +98,7 @@ public sealed class BskyGameService : BskyBotService {
                 await channel.RespondAsync("Game ended.");
                 break;
             default:
-                await channel.RespondAsync($"Unknown command '/{command}'. " + HelpText);
+                await channel.RespondAsync($"Unknown command '!{command}'. " + HelpText);
                 break;
         }
     }
@@ -126,7 +126,7 @@ public sealed class BskyGameService : BskyBotService {
             async session => await channel.RespondAsync(
                 $"New game of {template.CommandName} ({playerCount} players) started.\n"
                 + await channel.RenderBoardForAsync(session, cancellationToken)
-                + "\nOther players: /join to claim a slot."
+                + "\nOther players: !join to claim a slot."
             ),
             error => channel.RespondAsync(error.Message)
         );
@@ -134,7 +134,7 @@ public sealed class BskyGameService : BskyBotService {
 
     private async Task HandleJoinAsync(string chatKey, string did, MessageChannel channel, CancellationToken cancellationToken) {
         if (!GameStore.TryGetGame(chatKey, out var session)) {
-            await channel.RespondAsync("No game in this thread. Start one with /new [game] [players].");
+            await channel.RespondAsync("No game in this thread. Start one with !new [game] [players].");
             return;
         }
 
@@ -153,7 +153,7 @@ public sealed class BskyGameService : BskyBotService {
 
     private async Task HandleBoardAsync(string chatKey, string did, MessageChannel channel, CancellationToken cancellationToken) {
         if (!GameStore.TryGetGame(chatKey, out var session)) {
-            await channel.RespondAsync("No game in this thread. Start one with /new [game] [players].");
+            await channel.RespondAsync("No game in this thread. Start one with !new [game] [players].");
             return;
         }
 
@@ -167,14 +167,14 @@ public sealed class BskyGameService : BskyBotService {
 
         var playerIndex = session.GetPlayerIndex(senderDid);
         if (playerIndex is null) {
-            await channel.RespondAsync("You're not in this game yet. Send /join to claim a slot.");
+            await channel.RespondAsync("You're not in this game yet. Send !join to claim a slot.");
             return;
         }
 
         var playerView = session.GetViewFor(senderDid);
         var moves = ActionParser.ParseMoves(playerView, message);
         if (moves.Count == 0) {
-            await channel.RespondAsync("No valid moves found. Send a space name like '5' (or '1A'), or /help.");
+            await channel.RespondAsync("No valid moves found. Send a space name like '5' (or '1A'), or !help.");
             return;
         }
 
@@ -208,9 +208,9 @@ public sealed class BskyGameService : BskyBotService {
 
     private const string HelpText =
         "Commands:\n"
-        + "/new [game] [players] — start a game (games: tictactoe, fog-tictactoe, kriegspiel-tictactoe, gomoku...)\n"
-        + "/join — claim a player slot\n"
-        + "/board — show the board\n"
-        + "/quit — end the game\n"
+        + "!new [game] [players] — start a game (games: tictactoe, fog-tictactoe, kriegspiel-tictactoe, gomoku...)\n"
+        + "!join — claim a player slot\n"
+        + "!board — show the board\n"
+        + "!quit — end the game\n"
         + "Reply with a space name (e.g. '5' or '1A') to play a move.";
 }
