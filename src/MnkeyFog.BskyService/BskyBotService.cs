@@ -26,6 +26,12 @@ public record BskyBotOptions {
 
     /// <summary>How often to poll DM conversation logs. Defaults to 10 seconds.</summary>
     public TimeSpan? DirectMessagePollInterval { get; init; }
+
+    /// <summary>
+    /// Optional directory for game-state persistence. When set, active games are
+    /// mirrored to JSON files there and reloaded on startup (crash recovery).
+    /// </summary>
+    public string? GamePersistenceDirectory { get; init; }
 }
 
 /// <summary>
@@ -40,7 +46,7 @@ public abstract class BskyBotService : IAsyncDisposable {
 
     protected ILogger Logger { get; }
     protected BlueskyAgent Agent { get; private set; } = null!;
-    protected GameStore GameStore { get; } = new();
+    protected GameStore GameStore { get; private set; } = new();
 
     private AtProtoJetstream? _jetstream;
     private CancellationTokenSource? _pollingCts;
@@ -59,6 +65,10 @@ public abstract class BskyBotService : IAsyncDisposable {
     /// </summary>
     public virtual async Task StartAsync(BskyBotOptions options, CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(options);
+
+        if (options.GamePersistenceDirectory is not null) {
+            GameStore = new GameStore(options.GamePersistenceDirectory);
+        }
 
         if (options.Service is not null && options.Service != DefaultService) {
             throw new NotSupportedException("Custom PDS services are not supported by this bot yet.");

@@ -20,69 +20,91 @@ namespace MnkeyFog.BskyService;
 ///
 /// Public threads: @mention the bot with "space=NN" to play a move on the game
 /// keyed to the mention thread's root post; the bot posts the spectator board
-/// mentioning all active players.
+/// (no fog leak) mentioning all active players (up to 10 handles).
 /// </summary>
 public sealed class BskyGameService : BskyBotService {
+    /// <summary>Bluesky limits a post to mentioning at most 10 users.</summary>
+    private const int MaxMentionsPerPost = 10;
+
     public BskyGameService(ILogger logger) : base(logger) { }
 
     protected internal override Task OnDirectMessageAsync(string conversationId, string senderDid, string message, CancellationToken cancellationToken) {
-        return HandleMessageAsync(
-            chatKey: $"dm:{conversationId}",
-            senderDid: senderDid,
-            message: message,
-            replyToDm: text => SendDirectMessageAsync(conversationId, text, cancellationToken),
-            cancellationToken: cancellationToken
+        var channel = new MessageChannel(
+            RespondAsync: text => SendDirectMessageAsync(conversationId, text, cancellationToken),
+            RenderBoardForAsync: (session, _) => Task.FromResult(
+                TextBoardRenderer.Render(session.GetViewFor(senderDid))
+            )
         );
+        return HandleMessageAsync($"dm:{conversationId}", senderDid, message, channel, cancellationToken);
     }
 
     protected internal override Task OnMentionAsync(AtUri postUri, string authorDid, string message, CancellationToken cancellationToken) {
-        return HandleMessageAsync(
-            chatKey: $"mention:{postUri}",
-            senderDid: authorDid,
-            message: message,
-            replyToDm: text => SendDirectMessageAsync(authorDid, text, cancellationToken),
-            cancellationToken: cancellationToken
+        var channel = new MessageChannel(
+            RespondAsync: text => PostAsync(text, cancellationToken),
+            RenderBoardForAsync: RenderPublicBoardAsync
         );
+        return HandleMessageAsync($"mention:{postUri}", authorDid, message, channel, cancellationToken);
     }
 
-    private async Task HandleMessageAsync(
-        string chatKey,
-        string senderDid,
-        string message,
-        Func<string, Task> replyToDm,
-        CancellationToken cancellationToken
-    ) {
+    private async Task<string> RenderPublicBoardAsync(GameSession session, CancellationToken cancellationToken) {
+        var board = TextBoardRenderer.Render(session.GetSpectatorView());
+
+        // Append @mentions of active players so everyone in the thread sees the call-out.
+        var mentions = await GetActivePlayerHandlesAsync(session, cancellationToken);
+        return mentions.Count == 0 ? board : $"{board}\n{string.Join(" ", mentions.Select(h => $"@{h}"))}";
+    }
+
+    /// <summary>Resolve handles for the DIDs of players who have joined the session.</summary>
+    private async Task<IReadOnlyList<string>> GetActivePlayerHandlesAsync(GameSession session, CancellationToken cancellationToken) {
+        if (session.PlayerDids.Count == 0) {
+            return [];
+        }
+
+        var profiles = await Agent.GetProfiles(
+            session.PlayerDids.Keys.Select(did => (AtIdentifier)(Did)did).ToList(),
+            cancellationToken: cancellationToken
+        );
+
+        return profiles.Succeeded && profiles.Result is not null
+            ? [.. profiles.Result
+                .Where(p => p.Handle is not null)
+                .Take(MaxMentionsPerPost)
+                .Select(p => (string)p.Handle!)]
+            : [];
+    }
+
+    private async Task HandleMessageAsync(string chatKey, string senderDid, string message, MessageChannel channel, CancellationToken cancellationToken) {
         if (ActionParser.ParseCommand(message) is not (var command, var args)) {
             // Not a command — try to parse it as moves in an existing game.
-            await TryPlayMovesAsync(chatKey, senderDid, message, replyToDm, cancellationToken);
+            await TryPlayMovesAsync(chatKey, senderDid, message, channel, cancellationToken);
             return;
         }
 
         switch (command) {
             case "new":
-                await HandleNewAsync(chatKey, senderDid, args, replyToDm, cancellationToken);
+                await HandleNewAsync(chatKey, senderDid, args, channel, cancellationToken);
                 break;
             case "join":
-                await HandleJoinAsync(chatKey, senderDid, replyToDm, cancellationToken);
+                await HandleJoinAsync(chatKey, senderDid, channel, cancellationToken);
                 break;
             case "board":
-                await HandleBoardAsync(chatKey, senderDid, replyToDm, cancellationToken);
+                await HandleBoardAsync(chatKey, senderDid, channel, cancellationToken);
                 break;
             case "help":
-                await replyToDm(HelpText);
+                await channel.RespondAsync(HelpText);
                 break;
             case "quit":
                 GameStore.RemoveGame(chatKey);
-                await replyToDm("Game ended.");
+                await channel.RespondAsync("Game ended.");
                 break;
             default:
-                await replyToDm($"Unknown command '/{command}'. " + HelpText);
+                await channel.RespondAsync($"Unknown command '/{command}'. " + HelpText);
                 break;
         }
     }
 
     #region command handlers
-    private async Task HandleNewAsync(string chatKey, string creatorDid, string args, Func<string, Task> replyToDm, CancellationToken cancellationToken) {
+    private async Task HandleNewAsync(string chatKey, string creatorDid, string args, MessageChannel channel, CancellationToken cancellationToken) {
         var argTokens = args.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var templateName = argTokens.Length > 0 ? argTokens[0].ToLowerInvariant() : "tictactoe";
         var template = GameTemplates.GetBuiltInGameTemplates()
@@ -90,7 +112,7 @@ public sealed class BskyGameService : BskyBotService {
 
         if (template is null) {
             var known = string.Join(", ", GameTemplates.GetBuiltInGameTemplates().Select(t => t.CommandName));
-            await replyToDm($"Unknown game '{templateName}'. Known games: {known}");
+            await channel.RespondAsync($"Unknown game '{templateName}'. Known games: {known}");
             return;
         }
 
@@ -101,55 +123,58 @@ public sealed class BskyGameService : BskyBotService {
 
         var result = GameStore.CreateGame(chatKey, creatorDid, playerCount, template);
         await result.Match(
-            session => replyToDm(
+            async session => await channel.RespondAsync(
                 $"New game of {template.CommandName} ({playerCount} players) started.\n"
-                + TextBoardRenderer.Render(session.GetViewFor(creatorDid))
+                + await channel.RenderBoardForAsync(session, cancellationToken)
                 + "\nOther players: /join to claim a slot."
             ),
-            invalid => replyToDm(invalid.Message)
+            error => channel.RespondAsync(error.Message)
         );
     }
 
-    private async Task HandleJoinAsync(string chatKey, string did, Func<string, Task> replyToDm, CancellationToken cancellationToken) {
+    private async Task HandleJoinAsync(string chatKey, string did, MessageChannel channel, CancellationToken cancellationToken) {
         if (!GameStore.TryGetGame(chatKey, out var session)) {
-            await replyToDm("No game in this thread. Start one with /new [game] [players].");
+            await channel.RespondAsync("No game in this thread. Start one with /new [game] [players].");
             return;
         }
 
         var result = session.Join(did);
         await result.Match(
-            player => replyToDm(
-                $"You joined as '{player.Value.Mark}'.\n"
-                + TextBoardRenderer.Render(session.GetViewFor(did))
-            ),
-            invalid => replyToDm(invalid.Message)
+            async player => {
+                GameStore.Save(session);
+                await channel.RespondAsync(
+                    $"You joined as '{player.Value.Mark}'.\n"
+                    + await channel.RenderBoardForAsync(session, cancellationToken)
+                );
+            },
+            error => channel.RespondAsync(error.Message)
         );
     }
 
-    private async Task HandleBoardAsync(string chatKey, string did, Func<string, Task> replyToDm, CancellationToken cancellationToken) {
+    private async Task HandleBoardAsync(string chatKey, string did, MessageChannel channel, CancellationToken cancellationToken) {
         if (!GameStore.TryGetGame(chatKey, out var session)) {
-            await replyToDm("No game in this thread. Start one with /new [game] [players].");
+            await channel.RespondAsync("No game in this thread. Start one with /new [game] [players].");
             return;
         }
 
-        await replyToDm(TextBoardRenderer.Render(session.GetViewFor(did)));
+        await channel.RespondAsync(await channel.RenderBoardForAsync(session, cancellationToken));
     }
 
-    private async Task TryPlayMovesAsync(string chatKey, string senderDid, string message, Func<string, Task> replyToDm, CancellationToken cancellationToken) {
+    private async Task TryPlayMovesAsync(string chatKey, string senderDid, string message, MessageChannel channel, CancellationToken cancellationToken) {
         if (!GameStore.TryGetGame(chatKey, out var session)) {
             return; // no game; stay quiet to avoid replying to every random DM
         }
 
         var playerIndex = session.GetPlayerIndex(senderDid);
         if (playerIndex is null) {
-            await replyToDm("You're not in this game yet. Send /join to claim a slot.");
+            await channel.RespondAsync("You're not in this game yet. Send /join to claim a slot.");
             return;
         }
 
         var playerView = session.GetViewFor(senderDid);
         var moves = ActionParser.ParseMoves(playerView, message);
         if (moves.Count == 0) {
-            await replyToDm("No valid moves found. Send a space name like '5' (or '1A'), or /help.");
+            await channel.RespondAsync("No valid moves found. Send a space name like '5' (or '1A'), or /help.");
             return;
         }
 
@@ -165,14 +190,21 @@ public sealed class BskyGameService : BskyBotService {
             session.GameState.EndRound(out _);
         }
 
-        var boardText = TextBoardRenderer.Render(session.GetViewFor(senderDid));
-        await replyToDm(string.Join("\n", resultTexts) + "\n" + boardText);
+        await channel.RespondAsync(string.Join("\n", resultTexts) + "\n" + await channel.RenderBoardForAsync(session, cancellationToken));
 
         if (session.GameState.IsGameOver) {
             GameStore.RemoveGame(chatKey);
+        } else {
+            GameStore.Save(session);
         }
     }
     #endregion
+
+    /// <summary>How the game service talks back: DM reply vs public post, and which board view to render.</summary>
+    private sealed record MessageChannel(
+        Func<string, Task> RespondAsync,
+        Func<GameSession, CancellationToken, Task<string>> RenderBoardForAsync
+    );
 
     private const string HelpText =
         "Commands:\n"

@@ -30,6 +30,23 @@ public sealed class GameSession {
         _playerByDid[creatorDid] = 0;
     }
 
+    /// <summary>Restore a session from persisted state (crash recovery).</summary>
+    internal GameSession(string chatId, string creatorDid, DateTimeOffset createdAt, IReadOnlyDictionary<string, int> playerDids, GameState gameState) {
+        ArgumentException.ThrowIfNullOrWhiteSpace(chatId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(creatorDid);
+        ArgumentNullException.ThrowIfNull(playerDids);
+        ArgumentNullException.ThrowIfNull(gameState);
+
+        ChatId = chatId;
+        CreatorDid = creatorDid;
+        CreatedAt = createdAt;
+        GameState = gameState;
+
+        foreach (var (did, index) in playerDids) {
+            _playerByDid[did] = index;
+        }
+    }
+
     #region player management
     /// <summary>
     /// Have the DID behind <paramref name="did"/> claim the next unclaimed player slot.
