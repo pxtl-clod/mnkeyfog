@@ -74,12 +74,14 @@ public sealed class BskyGameService : BskyBotService {
     }
 
     private async Task HandleMessageAsync(string chatKey, string senderDid, string message, MessageChannel channel, CancellationToken cancellationToken) {
-        if (ActionParser.ParseCommand(message) is not (var command, var args)) {
+        var parsedCommand = ActionParser.ParseCommand(message);
+        if (parsedCommand.IsT1) {
             // Not a command — try to parse it as moves in an existing game.
             await TryPlayMovesAsync(chatKey, senderDid, message, channel, cancellationToken);
             return;
         }
 
+        var (command, args) = parsedCommand.AsT0;
         switch (command) {
             case "new":
                 await HandleNewAsync(chatKey, senderDid, args, channel, cancellationToken);

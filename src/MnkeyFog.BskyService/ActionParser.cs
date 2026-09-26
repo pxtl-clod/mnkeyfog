@@ -14,19 +14,20 @@ public static partial class ActionParser {
     private static partial Regex SpaceAssignmentPrefixRegex();
 
     /// <summary>
-    /// Parse a command token. Returns the lowercased command name (without the '!')
-    /// and the remainder of the message, or null if the message is not a command.
+    /// Parse a command token. Returns a <see cref="CommandToken"/> with the
+    /// lowercased command name (without the '!') and the remainder of the
+    /// message, or <see cref="None"/> if the message is not a command.
     /// </summary>
-    public static (string Command, string Args)? ParseCommand(string message) {
+    public static OneOf<CommandToken, None> ParseCommand(string message) {
         var trimmed = message.Trim();
         if (!trimmed.StartsWith('!')) {
-            return null;
+            return new None();
         }
 
         var spaceIndex = trimmed.IndexOf(' ');
         var command = (spaceIndex < 0 ? trimmed : trimmed[..spaceIndex])[1..].ToLowerInvariant();
         var args = spaceIndex < 0 ? "" : trimmed[(spaceIndex + 1)..].Trim();
-        return (command, args);
+        return new CommandToken(command, args);
     }
 
     /// <summary>
@@ -72,3 +73,6 @@ public static partial class ActionParser {
         }
     }
 }
+
+/// <summary>A parsed bot command: the lowercased command name and its argument string.</summary>
+public sealed record CommandToken(string Command, string Args);

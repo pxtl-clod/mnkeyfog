@@ -284,6 +284,22 @@ This document captures the coding style patterns used in this project.
 
 - Convert between `OneOf` types using `.Match<>()` when needed.
 
+- Prefer `OneOf` over a nullable return (`T?` / `(A, B)?`) when a null result
+  means a *very different event* has occurred rather than merely an absent
+  value. Name the alternative case (e.g. `OneOf<CommandToken, None>` for "this
+  message is not a command"), so callers switch on meaning instead of testing
+  for null:
+
+    ```csharp
+    public OneOf<CommandToken, None> ParseCommand(string message) { ... }
+    ```
+
+- An alternative pattern for "found or not" cases is to return an
+  `IEnumerable` of parsed results (1 or 0 items expected) and have the caller
+  simply `foreach` across the results — the empty case then falls out
+  naturally as a no-op. This also extends cleanly to multiple results per
+  call (e.g. several commands in one message, where game rules allow).
+
 ## LINQ and Query Usage
 
 - Use `var` with LINQ expressions.
