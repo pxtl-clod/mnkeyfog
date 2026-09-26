@@ -12,7 +12,7 @@ This document captures the coding style patterns used in this project.
 ## General
 
 - **Global usings**: Use `global using` directives at the file top for common namespaces (`System`, `System.Linq`, `System.Collections.Generic`, `System.IO`, etc.). See `.NETCoreApp,Version=v10.0.AssemblyAttributes.cs`.
-- **File-level usings**: Place `using` directives after the namespace declaration, before class definitions.
+- **File-level usings**: Place `using` directives before the namespace declaration, before class definitions.
 - **OneOf types**: Use the `OneOf` library for result types (`ActionQueuedSuccessfully`, `NotFound`, `AlreadyPlayed`, `BoardIsDone`).
 
 ## Indentation
