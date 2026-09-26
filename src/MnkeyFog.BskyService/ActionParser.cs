@@ -31,8 +31,9 @@ public static partial class ActionParser {
     }
 
     /// <summary>
-    /// Parse all space-move tokens in a message into game actions, using the given
-    /// player's view (so fogged spaces are not playable) to resolve space names.
+    /// Parse all space-move tokens in a message into game actions. The player's
+    /// view is used to resolve space names (board prefixes etc.); fog is not a
+    /// factor — fogged spaces remain playable, per Kriegspiel rules.
     /// </summary>
     public static IReadOnlyList<GameAction> ParseMoves(GameView playerView, string message) {
         var moves = new List<GameAction>();
@@ -59,9 +60,11 @@ public static partial class ActionParser {
     }
 
     /// <summary>
-    /// Resolve a space name to a move action, or null if the token is not a valid,
-    /// currently-playable space. The model's lookup throws on invalid board-name
-    /// prefixes (multi-board games), so this is guarded.
+    /// Resolve a space name to a move action, or null if the token is not a valid
+    /// space name. Whether the move is allowed is decided by the model at
+    /// attempt time (e.g. Known-occupied spaces return PositionAlreadyPlayed).
+    /// The model's lookup throws on invalid board-name prefixes (multi-board
+    /// games), so this is guarded.
     /// </summary>
     private static GameAction? TryCreateMove(GameActionFactoryForSpace factory, GameView playerView, string token) {
         try {
