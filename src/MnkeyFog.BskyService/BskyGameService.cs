@@ -200,12 +200,6 @@ public sealed class BskyGameService : BskyBotService {
     }
     #endregion
 
-    /// <summary>How the game service talks back: DM reply vs public post, and which board view to render.</summary>
-    private sealed record MessageChannel(
-        Func<string, Task> RespondAsync,
-        Func<GameSession, CancellationToken, Task<string>> RenderBoardForAsync
-    );
-
     private const string HelpText =
         "Commands:\n"
         + "!new [game] [players] — start a game (games: tictactoe, fog-tictactoe, kriegspiel-tictactoe, gomoku...)\n"
