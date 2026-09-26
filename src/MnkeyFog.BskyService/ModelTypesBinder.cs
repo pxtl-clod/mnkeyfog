@@ -1,23 +1,9 @@
 using System.Reflection;
 using System.Runtime.Serialization;
+using MnkeyFog.BskyService.Persistence;
 using Newtonsoft.Json.Serialization;
 
 namespace MnkeyFog.BskyService;
-
-/// <summary>
-/// Persistence DTO for a <see cref="GameSession"/>: game state plus chat metadata.
-/// A list of entries is used instead of a dictionary so that the polymorphic
-/// type names stay resolvable by <see cref="ModelTypesBinder"/>.
-/// </summary>
-internal sealed record PersistedSession(
-    string ChatId,
-    string CreatorDid,
-    DateTimeOffset CreatedAt,
-    List<PersistedPlayerDid> PlayerDids,
-    GameState GameState
-);
-
-internal sealed record PersistedPlayerDid(string Did, int PlayerIndex);
 
 /// <summary>
 /// Serialization binder for GameState persistence, restricting polymorphic
